@@ -1,85 +1,148 @@
+"""
+Parser de comandos para el asistente domótico
+Interpreta las órdenes en lenguaje natural y las convierte en acciones estructuradas
+"""
+
 import re
-from acciones import EncenderDispositivo, ApagarDispositivo, AjustarTemperatura, ReproducirMusica
 
 def interpretar_comando(comando):
+    """
+    Analiza un comando en lenguaje natural y extrae la acción a realizar
+    
+    Args:
+        comando (str): Texto del comando ingresado por el usuario
+    
+    Returns:
+        dict: Diccionario con la acción y sus parámetros, o None si no se reconoce
+    """
     comando = comando.lower().strip()
     
-    # Caso 7: Reproducir música "pon [cancion] de [artista]"
-    # Ejemplo: "pon never gonna give you up de rick astley"
-    match_musica = re.search(r"pon (.+) de (.+)", comando)
-    if match_musica:
-        cancion = match_musica.group(1).strip()
-        artista = match_musica.group(2).strip()
-        ReproducirMusica(artista, cancion)
-        return
-
-    # Caso 5 & 6: Temperatura "pon la [modo] a [temp] grados", "enciende el [modo] a [temp] grados"
-    # Ejemplo: "pon la calefacción a 22 grados", "enciende el aire acondicionado a 19 grados"
-    match_temp = re.search(r"(?:pon|enciende|ajusta) (?:la|el) (calefacción|aire acondicionado) a (\d+)(?: grados)?", comando)
-    if match_temp:
-        modo = match_temp.group(1)
-        temperatura = match_temp.group(2)
-        AjustarTemperatura(modo, temperatura)
-        return
-
-    # Caso 1, 2, 3, 4: Encender/Apagar dispositivos
+    # Detectar acción de ENCENDER
+    if any(palabra in comando for palabra in ['enciende', 'encienda', 'activar', 'activa', 'prende', 'prenda']):
+        return parsear_encender(comando)
     
-    # Ordenar verbos por longitud descendente para evitar coincidencias parciales (ej. "activa" dentro de "activar")
-    verbos_encender = ["encender", "enciende", "activar", "activa", "conecta"]
-    verbos_apagar = ["desconecta", "desconectar", "desactiva", "desactivar", "apaga", "apagar"]
+    # Detectar acción de APAGAR
+    elif any(palabra in comando for palabra in ['apaga', 'apague', 'desactiva', 'desactivar', 'desconecta', 'desconectar']):
+        return parsear_apagar(comando)
     
-    accion = None
-    # Verificar apagar PRIMERO para que "desconecta" no coincida con "conecta"
-    if any(v in comando for v in verbos_apagar):
-        accion = "apagar"
-    elif any(v in comando for v in verbos_encender):
-        accion = "encender"
-        
-    if accion:
-        # Intentar extraer ubicación con "del" o "en"
-        ubicacion = ""
-        dispositivo = ""
-        
-        # Identificar separadores de ubicacion
-        separadores = [" del ", " en ", " de la ", " en la ", " en el ", " de "]
-        found_sep = None
-        for sep in separadores:
-            if sep in comando:
-                found_sep = sep
-                break
-        
-        parte_disp = comando
-        if found_sep:
-            partes = comando.split(found_sep, 1) # Split solo en la primera coincidencia
-            parte_disp = partes[0]
-            ubicacion = partes[1].strip()
-            
-            # Limpieza básica de artículos en ubicación
-            if ubicacion.startswith("el "): ubicacion = ubicacion[3:]
-            if ubicacion.startswith("la "): ubicacion = ubicacion[3:]
-            if ubicacion.startswith("las "): ubicacion = ubicacion[4:]
-            if ubicacion.startswith("los "): ubicacion = ubicacion[4:]
+    # Detectar acción de AJUSTAR TEMPERATURA
+    elif any(palabra in comando for palabra in ['temperatura', 'grados', 'calefacción', 'calefaccion', 'aire acondicionado']):
+        return parsear_temperatura(comando)
+    
+    # Detectar acción de REPRODUCIR MÚSICA
+    elif any(palabra in comando for palabra in ['pon', 'reproduce', 'reproducir', 'poner', 'play', 'escuchar']):
+        return parsear_musica(comando)
+    
+    return None
 
-        # Limpiar verbo y artículos del dispositivo
-        # Usamos regex para reemplazar el verbo exacto al inicio
-        all_verbs = sorted(verbos_encender + verbos_apagar, key=len, reverse=True)
-        for v in all_verbs:
-            if parte_disp.startswith(v):
-                parte_disp = parte_disp[len(v):].strip()
-                break # Solo removemos el primer verbo encontrado
-        
-        # Limpiar articulos iniciales
-        for art in ["el ", "la ", "los ", "las "]:
-            if parte_disp.startswith(art):
-                parte_disp = parte_disp[len(art):].strip()
-                break
-        
-        dispositivo = parte_disp
+def parsear_encender(comando):
+    """Extrae dispositivo y ubicación para comando de encendido"""
+    dispositivo = extraer_dispositivo(comando)
+    ubicacion = extraer_ubicacion(comando)
+    
+    if dispositivo and ubicacion:
+        return {
+            'accion': 'encender',
+            'dispositivo': dispositivo,
+            'ubicacion': ubicacion
+        }
+    return None
 
-        if accion == "encender":
-            EncenderDispositivo(ubicacion, dispositivo)
-        else:
-            ApagarDispositivo(ubicacion, dispositivo)
-        return
+def parsear_apagar(comando):
+    """Extrae dispositivo y ubicación para comando de apagado"""
+    dispositivo = extraer_dispositivo(comando)
+    ubicacion = extraer_ubicacion(comando)
+    
+    if dispositivo and ubicacion:
+        return {
+            'accion': 'apagar',
+            'dispositivo': dispositivo,
+            'ubicacion': ubicacion
+        }
+    return None
 
-    print("Comando no reconocido.")
+def parsear_temperatura(comando):
+    """Extrae modo y temperatura para comando de climatización"""
+    # Detectar modo (calefacción o aire acondicionado)
+    modo = None
+    if 'calefacción' in comando or 'calefaccion' in comando:
+        modo = 'calefacción'
+    elif 'aire acondicionado' in comando or 'aire' in comando:
+        modo = 'aire acondicionado'
+    
+    # Extraer temperatura con expresión regular
+    match = re.search(r'(\d+)\s*grados?', comando)
+    temperatura = int(match.group(1)) if match else None
+    
+    if modo and temperatura:
+        return {
+            'accion': 'temperatura',
+            'modo': modo,
+            'temperatura': temperatura
+        }
+    return None
+
+def parsear_musica(comando):
+    """Extrae artista y canción para comando de reproducción musical"""
+    # Intentar extraer canción y artista con patrón "canción de artista"
+    match = re.search(r'(?:pon|reproduce|reproducir|poner)\s+(.+?)\s+de\s+(.+)', comando)
+    
+    if match:
+        cancion = match.group(1).strip()
+        artista = match.group(2).strip()
+        return {
+            'accion': 'musica',
+            'cancion': cancion,
+            'artista': artista
+        }
+    
+    # Si no se encuentra el patrón, buscar solo después del verbo
+    match_simple = re.search(r'(?:pon|reproduce|reproducir|poner)\s+(.+)', comando)
+    if match_simple:
+        contenido = match_simple.group(1).strip()
+        return {
+            'accion': 'musica',
+            'cancion': contenido,
+            'artista': 'Artista desconocido'
+        }
+    
+    return None
+
+def extraer_dispositivo(comando):
+    """Identifica el dispositivo mencionado en el comando"""
+    dispositivos = {
+        'luz': ['luz', 'luces', 'iluminación', 'iluminacion', 'lampara', 'lámpara'],
+        'ventilador': ['ventilador', 'ventiladores'],
+        'calefacción': ['calefacción', 'calefaccion', 'radiador'],
+        'aire acondicionado': ['aire acondicionado', 'aire', 'climatizador'],
+        'televisor': ['televisor', 'television', 'televisión', 'tv', 'tele'],
+        'horno': ['horno'],
+        'cafetera': ['cafetera', 'café', 'cafe'],
+        'lavadora': ['lavadora'],
+        'secadora': ['secadora']
+    }
+    
+    for dispositivo, palabras_clave in dispositivos.items():
+        if any(palabra in comando for palabra in palabras_clave):
+            return dispositivo
+    
+    return None
+
+def extraer_ubicacion(comando):
+    """Identifica la ubicación mencionada en el comando"""
+    ubicaciones = {
+        'comedor': ['comedor', 'salon', 'salón'],
+        'dormitorio': ['dormitorio', 'habitación', 'habitacion', 'cuarto', 'recámara', 'recamara'],
+        'cocina': ['cocina'],
+        'baño': ['baño', 'bano', 'aseo'],
+        'pasillo': ['pasillo'],
+        'entrada': ['entrada', 'recibidor'],
+        'garaje': ['garaje', 'garage'],
+        'jardín': ['jardín', 'jardin', 'exterior']
+    }
+    
+    for ubicacion, palabras_clave in ubicaciones.items():
+        if any(palabra in comando for palabra in palabras_clave):
+            return ubicacion
+    
+    return 'sala principal'  # Ubicación por defecto
