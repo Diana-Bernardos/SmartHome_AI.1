@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Send, Cpu, Lightbulb, Thermometer, Music, Zap, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_URL = 'http://localhost:8000/api/chat';
+const API_URL = '/api/chat';
 
 function App() {
   const [messages, setMessages] = useState([
