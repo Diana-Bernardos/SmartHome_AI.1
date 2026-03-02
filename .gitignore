@@ -3,3 +3,8 @@ __pycache__/
 *$py.class
 *.log
 .vscode/
+
+# Next.js
+.next/
+out/
+node_modules/
